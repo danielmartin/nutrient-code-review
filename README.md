@@ -1,6 +1,6 @@
 # Claude Code Reviewer
 
-An AI-powered code review GitHub Action using Claude to analyze code changes for correctness, reliability, performance, maintainability, testing, and security, plus a dedicated security review pass. This action provides intelligent, context-aware review for pull requests using Anthropic's Claude Code tool for deep semantic analysis.
+An AI-powered code review GitHub Action using Claude to analyze code changes. Runs two focused passes: a code quality review (correctness, reliability, performance, maintainability, testing) and a dedicated security review. This action provides intelligent, context-aware review for pull requests using Anthropic's Claude Code tool for deep semantic analysis.
 
 Based on the original work from [anthropics/claude-code-security-review](https://github.com/anthropics/claude-code-security-review).
 
@@ -12,7 +12,7 @@ Based on the original work from [anthropics/claude-code-security-review](https:/
 - **Contextual Understanding**: Goes beyond pattern matching to understand code semantics and intent
 - **Language Agnostic**: Works with any programming language
 - **False Positive Filtering**: Advanced filtering to reduce noise and focus on real issues
-- **Dual-Pass Security**: Runs a general review and a dedicated security review by default
+- **Dual-Pass Review**: Runs focused code quality and security passes separately for better signal
 
 ## Quick Start
 
@@ -63,7 +63,7 @@ This action is not hardened against prompt injection attacks and should only be 
 | `false-positive-filtering-instructions` | Path to custom false positive filtering instructions text file | None | No |
 | `custom-review-instructions` | Path to custom code review instructions text file to append to the audit prompt | None | No |
 | `custom-security-scan-instructions` | Path to custom security scan instructions text file to append to the security section | None | No |
-| `run-general-review` | Whether to run the general code review pass | `true` | No |
+| `run-general-review` | Whether to run the code quality review pass (correctness, reliability, performance, maintainability, testing) | `true` | No |
 | `run-security-review` | Whether to run the dedicated security review pass | `true` | No |
 
 ### Action Outputs

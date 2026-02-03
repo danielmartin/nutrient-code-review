@@ -641,7 +641,6 @@ def main():
                         pr_diff,
                         include_diff=include_diff,
                         custom_review_instructions=custom_review_instructions,
-                        custom_security_instructions=custom_security_instructions,
                     ),
                 )
                 pass_summaries['general'] = general_results.get('analysis_summary', {})

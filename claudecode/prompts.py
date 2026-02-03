@@ -6,16 +6,17 @@ def get_code_review_prompt(
     pr_diff=None,
     include_diff=True,
     custom_review_instructions=None,
-    custom_security_instructions=None,
 ):
     """Generate code review prompt for Claude Code.
+
+    Note: This prompt focuses on code quality (correctness, reliability, performance,
+    maintainability, testing). Security review is handled separately by get_security_review_prompt.
 
     Args:
         pr_data: PR data dictionary from GitHub API
         pr_diff: Optional complete PR diff in unified format
         include_diff: Whether to include the diff in the prompt (default: True)
         custom_review_instructions: Optional custom review instructions to append
-        custom_security_instructions: Optional custom security categories to append
 
     Returns:
         Formatted prompt string
@@ -46,10 +47,6 @@ NOTE: PR diff was omitted due to size constraints. Please use the file explorati
     if custom_review_instructions:
         custom_review_section = f"\n{custom_review_instructions}\n"
 
-    custom_security_section = ""
-    if custom_security_instructions:
-        custom_security_section = f"\n{custom_security_instructions}\n"
-
     return f"""
 You are a senior engineer conducting a high-signal code review of GitHub PR #{pr_data['number']}: "{pr_data['title']}"
 
@@ -64,13 +61,14 @@ Files modified:
 {files_changed}{diff_section}
 
 OBJECTIVE:
-Perform a focused, high-signal code review to identify HIGH-CONFIDENCE issues introduced by this PR. This includes correctness, reliability, performance, maintainability, testing, and security. Do not comment on pre-existing issues or purely stylistic preferences.
+Perform a focused, high-signal code review to identify HIGH-CONFIDENCE issues introduced by this PR. This covers correctness, reliability, performance, maintainability, and testing. Security issues are reviewed separately. Do not comment on pre-existing issues or purely stylistic preferences.
 
 CRITICAL INSTRUCTIONS:
 1. MINIMIZE FALSE POSITIVES: Only flag issues where you're >80% confident they are real and impactful
 2. AVOID NOISE: Skip style nits, subjective preferences, or low-impact suggestions
-3. FOCUS ON IMPACT: Prioritize bugs, regressions, security risks, data loss, or significant performance problems
+3. FOCUS ON IMPACT: Prioritize bugs, regressions, data loss, or significant performance problems
 4. SCOPE: Only evaluate code introduced or modified in this PR. Ignore unrelated existing issues
+5. NO SECURITY: Do not flag security issues - those are handled by a dedicated security review
 
 REVIEW CATEGORIES TO EXAMINE:
 
@@ -101,17 +99,7 @@ REVIEW CATEGORIES TO EXAMINE:
 - Missing tests for high-risk changes
 - Lack of logging/metrics around new critical behavior
 - Flaky behavior due to nondeterministic changes
-
-**Security:**
-- Injection risks (SQL/command/template/NoSQL)
-- Authentication or authorization bypass
-- Unsafe deserialization or dynamic code execution
-- Sensitive data exposure or insecure crypto usage
-{custom_security_section}
 {custom_review_section}
-Additional notes:
-- Even if something is only exploitable from the local network, it can still be a HIGH severity issue
-
 ANALYSIS METHODOLOGY:
 
 Phase 1 - Repository Context Research (Use file search tools):
@@ -125,9 +113,9 @@ Phase 2 - Comparative Analysis:
 - Look for inconsistent handling between similar code paths
 
 Phase 3 - Issue Assessment:
-- Examine each modified file for correctness, reliability, performance, maintainability, testing, and security implications
-- Trace data flow from inputs to sensitive or critical operations
-- Identify concurrency and state management risks
+- Examine each modified file for correctness, reliability, performance, maintainability, and testing implications
+- Trace data flow to identify logic errors or state management risks
+- Identify concurrency and resource management issues
 
 REQUIRED OUTPUT FORMAT:
 
@@ -139,10 +127,10 @@ You MUST output your findings as structured JSON with this exact schema:
       "file": "path/to/file.py",
       "line": 42,
       "severity": "HIGH",
-      "category": "security|correctness|reliability|performance|maintainability|testing",
+      "category": "correctness|reliability|performance|maintainability|testing",
       "title": "Short summary of the issue",
       "description": "What is wrong and where it happens",
-      "impact": "Concrete impact or failure mode (use exploit scenario for security issues)",
+      "impact": "Concrete impact or failure mode",
       "recommendation": "Actionable fix or mitigation",
       "confidence": 0.95
     }}
@@ -157,7 +145,7 @@ You MUST output your findings as structured JSON with this exact schema:
 }}
 
 SEVERITY GUIDELINES:
-- **HIGH**: Likely production bug, data loss, security vulnerability, auth bypass, or significant regression
+- **HIGH**: Likely production bug, data loss, or significant regression
 - **MEDIUM**: Real issue with limited scope or specific triggering conditions
 - **LOW**: Minor but real issue; use sparingly and only if clearly actionable
 
@@ -168,9 +156,9 @@ CONFIDENCE SCORING:
 - Below 0.7: Don't report (too speculative)
 
 FINAL REMINDER:
-Focus on HIGH and MEDIUM findings only. Better to miss some theoretical issues than flood the report with false positives. Each finding should be something a senior engineer would confidently raise in a PR review.
+Focus on HIGH and MEDIUM findings only. Better to miss some theoretical issues than flood the report with false positives. Each finding should be something a senior engineer would confidently raise in a PR review. Do NOT report security issues - those are handled separately.
 
-Begin your analysis now. Use the repository exploration tools to understand the codebase context, then analyze the PR changes for code review implications.
+Begin your analysis now. Use the repository exploration tools to understand the codebase context, then analyze the PR changes for code quality implications.
 
 Your final reply must contain the JSON and nothing else. You should not reply again after outputting the JSON.
 """

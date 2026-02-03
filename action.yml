@@ -1,5 +1,5 @@
 name: 'Claude Code Reviewer'
-description: 'AI-powered code review GitHub Action using Claude to analyze code changes for correctness, reliability, performance, maintainability, testing, and security, plus a dedicated security pass'
+description: 'AI-powered code review GitHub Action using Claude. Runs two focused passes: code quality (correctness, reliability, performance, maintainability, testing) and security.'
 author: 'Nutrient'
 
 inputs:
@@ -54,7 +54,7 @@ inputs:
     default: ''
 
   run-general-review:
-    description: 'Whether to run the general code review pass (correctness, reliability, performance, maintainability, testing, and security)'
+    description: 'Whether to run the code quality review pass (correctness, reliability, performance, maintainability, testing)'
     required: false
     default: 'true'
 
