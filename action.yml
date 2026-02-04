@@ -1,5 +1,5 @@
 name: 'Claude Code Reviewer'
-description: 'AI-powered code review GitHub Action using Claude. Runs two focused passes: code quality (correctness, reliability, performance, maintainability, testing) and security.'
+description: 'AI-powered code review GitHub Action using Claude. Unified multi-agent review for code quality and security.'
 author: 'Nutrient'
 
 inputs:
@@ -52,16 +52,6 @@ inputs:
     description: 'Path to custom security scan instructions text file to append to the security section (optional)'
     required: false
     default: ''
-
-  run-general-review:
-    description: 'Whether to run the code quality review pass (correctness, reliability, performance, maintainability, testing)'
-    required: false
-    default: 'true'
-
-  run-security-review:
-    description: 'Whether to run the dedicated security review pass'
-    required: false
-    default: 'true'
 
 outputs:
   findings-count:
@@ -202,8 +192,6 @@ runs:
         FALSE_POSITIVE_FILTERING_INSTRUCTIONS: ${{ inputs.false-positive-filtering-instructions }}
         CUSTOM_REVIEW_INSTRUCTIONS: ${{ inputs.custom-review-instructions }}
         CUSTOM_SECURITY_SCAN_INSTRUCTIONS: ${{ inputs.custom-security-scan-instructions }}
-        RUN_GENERAL_REVIEW: ${{ inputs.run-general-review }}
-        RUN_SECURITY_REVIEW: ${{ inputs.run-security-review }}
         CLAUDE_MODEL: ${{ inputs.claude-model }}
         CLAUDECODE_TIMEOUT: ${{ inputs.claudecode-timeout }}
         ACTION_PATH: ${{ github.action_path }}

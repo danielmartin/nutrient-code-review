@@ -15,7 +15,7 @@ import re
 import time 
 
 # Import existing components we can reuse
-from claudecode.prompts import get_code_review_prompt, get_security_review_prompt
+from claudecode.prompts import get_unified_review_prompt
 from claudecode.findings_filter import FindingsFilter
 from claudecode.json_parser import parse_json_with_fallbacks
 from claudecode.constants import (
@@ -602,68 +602,44 @@ def main():
             print(json.dumps({'error': f'Failed to fetch PR data: {str(e)}'}))
             sys.exit(EXIT_GENERAL_ERROR)
                 
-        # Determine which review passes to run
-        run_general_review = os.environ.get('RUN_GENERAL_REVIEW', 'true').lower() == 'true'
-        run_security_review = os.environ.get('RUN_SECURITY_REVIEW', 'true').lower() == 'true'
-
-        if not run_general_review and not run_security_review:
-            print(json.dumps({'error': 'Both RUN_GENERAL_REVIEW and RUN_SECURITY_REVIEW are disabled'}))
-            sys.exit(EXIT_CONFIGURATION_ERROR)
-
         # Get repo directory from environment or use current directory
         repo_path = os.environ.get('REPO_PATH')
         repo_dir = Path(repo_path) if repo_path else Path.cwd()
 
-        def run_review_pass(label: str, prompt_builder):
-            prompt_text = prompt_builder(include_diff=True)
-            success, error_msg, pass_results = claude_runner.run_code_review(repo_dir, prompt_text)
-
-            if not success and error_msg == "PROMPT_TOO_LONG":
-                print(f"[Info] {label} prompt too long, retrying without diff. Original prompt length: {len(prompt_text)} characters", file=sys.stderr)
-                prompt_without_diff = prompt_builder(include_diff=False)
-                print(f"[Info] {label} prompt length without diff: {len(prompt_without_diff)} characters", file=sys.stderr)
-                success, error_msg, pass_results = claude_runner.run_code_review(repo_dir, prompt_without_diff)
-
-            if not success:
-                raise AuditError(f'{label} failed: {error_msg}')
-
-            return pass_results
+        def run_review(include_diff: bool):
+            prompt_text = get_unified_review_prompt(
+                pr_data,
+                pr_diff,
+                include_diff=include_diff,
+                custom_review_instructions=custom_review_instructions,
+                custom_security_instructions=custom_security_instructions,
+            )
+            return claude_runner.run_code_review(repo_dir, prompt_text), len(prompt_text)
 
         all_findings = []
-        pass_summaries = {}
+        analysis_summary_from_review = {}
 
         try:
-            if run_general_review:
-                general_results = run_review_pass(
-                    "Code review",
-                    lambda include_diff: get_code_review_prompt(
-                        pr_data,
-                        pr_diff,
-                        include_diff=include_diff,
-                        custom_review_instructions=custom_review_instructions,
-                    ),
-                )
-                pass_summaries['general'] = general_results.get('analysis_summary', {})
-                for finding in general_results.get('findings', []):
-                    if isinstance(finding, dict):
-                        finding.setdefault('review_type', 'general')
-                    all_findings.append(finding)
+            (success, error_msg, review_results), prompt_len = run_review(include_diff=True)
 
-            if run_security_review:
-                security_results = run_review_pass(
-                    "Security review",
-                    lambda include_diff: get_security_review_prompt(
-                        pr_data,
-                        pr_diff,
-                        include_diff=include_diff,
-                        custom_security_instructions=custom_security_instructions,
-                    ),
-                )
-                pass_summaries['security'] = security_results.get('analysis_summary', {})
-                for finding in security_results.get('findings', []):
-                    if isinstance(finding, dict):
+            if not success and error_msg == "PROMPT_TOO_LONG":
+                print(f"[Info] Review prompt too long, retrying without diff. Original prompt length: {prompt_len} characters", file=sys.stderr)
+                (success, error_msg, review_results), prompt_len = run_review(include_diff=False)
+                print(f"[Info] Review prompt length without diff: {prompt_len} characters", file=sys.stderr)
+
+            if not success:
+                raise AuditError(f'Code review failed: {error_msg}')
+
+            analysis_summary_from_review = review_results.get('analysis_summary', {})
+            for finding in review_results.get('findings', []):
+                if isinstance(finding, dict):
+                    # Set review_type based on category
+                    category = finding.get('category', '').lower()
+                    if category == 'security':
                         finding.setdefault('review_type', 'security')
-                    all_findings.append(finding)
+                    else:
+                        finding.setdefault('review_type', 'general')
+                all_findings.append(finding)
 
         except AuditError as e:
             print(json.dumps({'error': f'Code review failed: {str(e)}'}))
@@ -693,10 +669,9 @@ def main():
             return high, medium, low
 
         high_count, medium_count, low_count = severity_counts(kept_findings)
-        files_reviewed = 0
-        for summary in pass_summaries.values():
-            if isinstance(summary, dict) and isinstance(summary.get('files_reviewed'), int):
-                files_reviewed = max(files_reviewed, summary['files_reviewed'])
+        files_reviewed = analysis_summary_from_review.get('files_reviewed', 0)
+        if not isinstance(files_reviewed, int):
+            files_reviewed = 0
 
         # Prepare output
         output = {
@@ -708,8 +683,7 @@ def main():
                 'high_severity': high_count,
                 'medium_severity': medium_count,
                 'low_severity': low_count,
-                'review_completed': True,
-                'passes': pass_summaries
+                'review_completed': True
             },
             'filtering_summary': {
                 'total_original_findings': len(original_findings),
