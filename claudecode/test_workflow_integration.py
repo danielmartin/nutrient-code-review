@@ -181,8 +181,8 @@ index 8901234..5678901 100644
         audit_result.stdout = json.dumps(claude_wrapped_response)
         audit_result.stderr = ''
         
-        # Provide results for general and security passes
-        mock_run.side_effect = [version_result, audit_result, audit_result]
+        # Provide results for unified review (single pass)
+        mock_run.side_effect = [version_result, audit_result]
         
         # Run the workflow
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -203,7 +203,7 @@ index 8901234..5678901 100644
         
         # Verify API calls
         assert mock_get.call_count == 3
-        assert mock_run.call_count == 3
+        assert mock_run.call_count == 2  # 1 version check + 1 unified review
         
         # Verify the audit was run with proper prompt
         audit_call = mock_run.call_args_list[1]

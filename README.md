@@ -1,6 +1,6 @@
 # Claude Code Reviewer
 
-An AI-powered code review GitHub Action using Claude to analyze code changes. Runs two focused passes: a code quality review (correctness, reliability, performance, maintainability, testing) and a dedicated security review. This action provides intelligent, context-aware review for pull requests using Anthropic's Claude Code tool for deep semantic analysis.
+An AI-powered code review GitHub Action using Claude to analyze code changes. Uses a unified multi-agent approach for both code quality (correctness, reliability, performance, maintainability, testing) and security in a single pass. This action provides intelligent, context-aware review for pull requests using Anthropic's Claude Code tool for deep semantic analysis.
 
 Based on the original work from [anthropics/claude-code-security-review](https://github.com/anthropics/claude-code-security-review).
 
@@ -12,7 +12,7 @@ Based on the original work from [anthropics/claude-code-security-review](https:/
 - **Contextual Understanding**: Goes beyond pattern matching to understand code semantics and intent
 - **Language Agnostic**: Works with any programming language
 - **False Positive Filtering**: Advanced filtering to reduce noise and focus on real issues
-- **Dual-Pass Review**: Runs focused code quality and security passes separately for better signal
+- **Unified Multi-Agent Review**: Combines code quality and security analysis in a single efficient pass
 
 ## Quick Start
 
@@ -63,8 +63,6 @@ This action is not hardened against prompt injection attacks and should only be 
 | `false-positive-filtering-instructions` | Path to custom false positive filtering instructions text file | None | No |
 | `custom-review-instructions` | Path to custom code review instructions text file to append to the audit prompt | None | No |
 | `custom-security-scan-instructions` | Path to custom security scan instructions text file to append to the security section | None | No |
-| `run-general-review` | Whether to run the code quality review pass (correctness, reliability, performance, maintainability, testing) | `true` | No |
-| `run-security-review` | Whether to run the dedicated security review pass | `true` | No |
 
 ### Action Outputs
 
@@ -135,17 +133,17 @@ Follow the Quick Start guide above. The action handles all dependencies automati
 
 To run the reviewer locally against a specific PR, see the [evaluation framework documentation](claudecode/evals/README.md).
 
-<a id="security-review-slash-command"></a>
+<a id="review-slash-command"></a>
 
-## Claude Code Integration: /code-review Command
+## Claude Code Integration: /review Command
 
-This repository includes `/code-review` and `/security-review` [slash commands](https://docs.anthropic.com/en/docs/claude-code/slash-commands) that provide the same review capabilities as the GitHub Action workflow. Use `/code-review` for a broad review (correctness, reliability, performance, maintainability, testing, and security), and `/security-review` for a security-focused review.
+This repository includes a `/review` [slash command](https://docs.anthropic.com/en/docs/claude-code/slash-commands) that provides the same review capabilities as the GitHub Action workflow. The command performs a comprehensive review covering code quality (correctness, reliability, performance, maintainability, testing) and security using a multi-agent approach.
 
 ### Customizing the Command
 
-The default commands are designed to work well in most cases, but they can also be customized based on your specific requirements. To do so:
+The default command is designed to work well in most cases, but it can also be customized based on your specific requirements. To do so:
 
-1. Copy the [`code-review.md`](https://github.com/PSPDFKit-labs/claude-code-review/blob/main/.claude/commands/code-review.md?plain=1) or [`security-review.md`](https://github.com/PSPDFKit-labs/claude-code-review/blob/main/.claude/commands/security-review.md?plain=1) file from this repository to your project's `.claude/commands/` folder.
+1. Copy the [`review.md`](https://github.com/PSPDFKit-labs/claude-code-review/blob/main/.claude/commands/review.md?plain=1) file from this repository to your project's `.claude/commands/` folder.
 2. Edit the copied file to customize the review instructions.
 
 ## Custom Scanning Configuration
