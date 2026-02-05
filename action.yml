@@ -246,7 +246,7 @@ runs:
         if [ -z "$ANTHROPIC_API_KEY" ]; then
           echo "::error::ANTHROPIC_API_KEY is not set. Please provide the claude-api-key input to the action."
           echo "Example usage:"
-          echo "  - uses: PSPDFKit-labs/claude-code-review@main"
+          echo "  - uses: PSPDFKit-labs/nutrient-code-review@main"
           echo "    with:"
           echo "      claude-api-key: \$\{{ secrets.ANTHROPIC_API_KEY }}"
           exit 1

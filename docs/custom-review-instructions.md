@@ -18,7 +18,7 @@ The `custom-review-instructions` input allows you to extend the general review f
 2. Reference it in your workflow:
 
 ```yaml
-- uses: PSPDFKit-labs/claude-code-review@main
+- uses: PSPDFKit-labs/nutrient-code-review@main
   with:
     custom-review-instructions: .github/custom-review-instructions.txt
 ```

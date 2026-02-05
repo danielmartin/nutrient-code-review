@@ -12,7 +12,7 @@ By default, the review includes a comprehensive set of exclusions and criteria f
 2. Reference it in your workflow:
 
 ```yaml
-- uses: PSPDFKit-labs/claude-code-review@main
+- uses: PSPDFKit-labs/nutrient-code-review@main
   with:
     false-positive-filtering-instructions: .github/false-positive-filtering.txt
 ```

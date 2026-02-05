@@ -38,7 +38,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 2
       
-      - uses: PSPDFKit-labs/claude-code-review@main
+      - uses: PSPDFKit-labs/nutrient-code-review@main
         with:
           comment-pr: true
           claude-api-key: ${{ secrets.CLAUDE_API_KEY }}
@@ -147,7 +147,7 @@ This repository includes a `/review` [slash command](https://docs.anthropic.com/
 
 The default command is designed to work well in most cases, but it can also be customized based on your specific requirements. To do so:
 
-1. Copy the [`review.md`](https://github.com/PSPDFKit-labs/claude-code-review/blob/main/.claude/commands/review.md?plain=1) file from this repository to your project's `.claude/commands/` folder.
+1. Copy the [`review.md`](https://github.com/PSPDFKit-labs/nutrient-code-review/blob/main/.claude/commands/review.md?plain=1) file from this repository to your project's `.claude/commands/` folder.
 2. Edit the copied file to customize the review instructions.
 
 ## Custom Scanning Configuration
@@ -176,7 +176,7 @@ By default, reviews are posted as "github-actions[bot]". To use a custom name an
        app-id: ${{ secrets.APP_ID }}
        private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
-   - uses: PSPDFKit-labs/claude-code-review@main
+   - uses: PSPDFKit-labs/nutrient-code-review@main
      with:
        claude-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
      env:
@@ -190,7 +190,7 @@ Review dismissal works automatically with custom apps since reviews are identifi
 Run the test suite to validate functionality:
 
 ```bash
-cd claude-code-review
+cd nutrient-code-review
 # Run all tests
 pytest claudecode -v
 ```
