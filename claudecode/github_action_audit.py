@@ -39,24 +39,90 @@ class AuditError(ValueError):
 
 class GitHubActionClient:
     """Simplified GitHub API client for GitHub Actions environment."""
-    
+
+    # Built-in patterns for files that should always be excluded
+    BUILTIN_EXCLUDED_PATTERNS = [
+        # Package manager lock files
+        'package-lock.json',
+        'yarn.lock',
+        'pnpm-lock.yaml',
+        'Gemfile.lock',
+        'Pipfile.lock',
+        'poetry.lock',
+        'composer.lock',
+        'Cargo.lock',
+        'go.sum',
+        'pubspec.lock',
+        'Podfile.lock',
+        'packages.lock.json',
+        # Generated/compiled files
+        '*.min.js',
+        '*.min.css',
+        '*.bundle.js',
+        '*.chunk.js',
+        '*.map',
+        '*.pb.go',
+        '*.pb.swift',
+        '*.generated.*',
+        '*.g.dart',
+        '*.freezed.dart',
+        # Binary files
+        '*.png',
+        '*.jpg',
+        '*.jpeg',
+        '*.gif',
+        '*.ico',
+        '*.webp',
+        '*.svg',
+        '*.woff',
+        '*.woff2',
+        '*.ttf',
+        '*.eot',
+        '*.pdf',
+        '*.zip',
+        '*.tar.gz',
+        '*.jar',
+        '*.pyc',
+        '*.so',
+        '*.dylib',
+        '*.dll',
+        '*.exe',
+    ]
+
+    # Built-in directories that should always be excluded
+    BUILTIN_EXCLUDED_DIRS = [
+        'node_modules',
+        'vendor',
+        'dist',
+        'build',
+        '.next',
+        '__pycache__',
+        '.gradle',
+        'Pods',
+        'DerivedData',
+    ]
+
     def __init__(self):
         """Initialize GitHub client using environment variables."""
         self.github_token = os.environ.get('GITHUB_TOKEN')
         if not self.github_token:
             raise ValueError("GITHUB_TOKEN environment variable required")
-            
+
         self.headers = {
             'Authorization': f'Bearer {self.github_token}',
             'Accept': 'application/vnd.github.v3+json',
             'X-GitHub-Api-Version': '2022-11-28'
         }
-        
-        # Get excluded directories from environment
+
+        # Get excluded directories from environment (user-specified)
         exclude_dirs = os.environ.get('EXCLUDE_DIRECTORIES', '')
-        self.excluded_dirs = [d.strip() for d in exclude_dirs.split(',') if d.strip()] if exclude_dirs else []
-        if self.excluded_dirs:
-            print(f"[Debug] Excluded directories: {self.excluded_dirs}", file=sys.stderr)
+        user_excluded_dirs = [d.strip() for d in exclude_dirs.split(',') if d.strip()] if exclude_dirs else []
+
+        # Combine built-in and user-specified exclusions
+        self.excluded_dirs = list(set(self.BUILTIN_EXCLUDED_DIRS + user_excluded_dirs))
+        if user_excluded_dirs:
+            print(f"[Debug] User excluded directories: {user_excluded_dirs}", file=sys.stderr)
+        print(f"[Debug] Total excluded directories: {self.excluded_dirs}", file=sys.stderr)
     
     def get_pr_data(self, repo_name: str, pr_number: int) -> Dict[str, Any]:
         """Get PR metadata and files from GitHub API.
@@ -136,24 +202,36 @@ class GitHubActionClient:
         return self._filter_generated_files(response.text)
     
     def _is_excluded(self, filepath: str) -> bool:
-        """Check if a file should be excluded based on directory patterns."""
+        """Check if a file should be excluded based on directory or file patterns."""
+        import fnmatch
+
+        # Check directory exclusions
         for excluded_dir in self.excluded_dirs:
             # Normalize excluded directory (remove leading ./ if present)
             if excluded_dir.startswith('./'):
                 normalized_excluded = excluded_dir[2:]
             else:
                 normalized_excluded = excluded_dir
-            
+
             # Check if file starts with excluded directory
             if filepath.startswith(excluded_dir + '/'):
                 return True
             if filepath.startswith(normalized_excluded + '/'):
                 return True
-            
+
             # Check if excluded directory appears anywhere in the path
             if '/' + normalized_excluded + '/' in filepath:
                 return True
-            
+
+        # Check file pattern exclusions
+        filename = filepath.split('/')[-1]
+        for pattern in self.BUILTIN_EXCLUDED_PATTERNS:
+            if fnmatch.fnmatch(filename, pattern):
+                return True
+            # Also check full path for patterns like *.generated.*
+            if fnmatch.fnmatch(filepath, pattern):
+                return True
+
         return False
     
     def _filter_generated_files(self, diff_text: str) -> str:
@@ -601,7 +679,22 @@ def main():
         except Exception as e:
             print(json.dumps({'error': f'Failed to fetch PR data: {str(e)}'}))
             sys.exit(EXIT_GENERAL_ERROR)
-                
+
+        # Determine whether to embed diff or use agentic file reading
+        max_diff_lines_str = os.environ.get('MAX_DIFF_LINES', '5000')
+        try:
+            max_diff_lines = int(max_diff_lines_str)
+        except ValueError:
+            max_diff_lines = 5000
+
+        diff_line_count = len(pr_diff.splitlines())
+        use_agentic_mode = max_diff_lines == 0 or diff_line_count > max_diff_lines
+
+        if use_agentic_mode:
+            print(f"[Info] Using agentic file reading mode (diff has {diff_line_count} lines, threshold: {max_diff_lines})", file=sys.stderr)
+        else:
+            print(f"[Debug] Embedding diff in prompt ({diff_line_count} lines)", file=sys.stderr)
+
         # Get repo directory from environment or use current directory
         repo_path = os.environ.get('REPO_PATH')
         repo_dir = Path(repo_path) if repo_path else Path.cwd()
@@ -609,7 +702,7 @@ def main():
         def run_review(include_diff: bool):
             prompt_text = get_unified_review_prompt(
                 pr_data,
-                pr_diff,
+                pr_diff if include_diff else None,
                 include_diff=include_diff,
                 custom_review_instructions=custom_review_instructions,
                 custom_security_instructions=custom_security_instructions,
@@ -620,12 +713,12 @@ def main():
         analysis_summary_from_review = {}
 
         try:
-            (success, error_msg, review_results), prompt_len = run_review(include_diff=True)
+            (success, error_msg, review_results), prompt_len = run_review(include_diff=not use_agentic_mode)
 
+            # Fallback to agentic mode if prompt still too long
             if not success and error_msg == "PROMPT_TOO_LONG":
-                print(f"[Info] Review prompt too long, retrying without diff. Original prompt length: {prompt_len} characters", file=sys.stderr)
+                print(f"[Info] Prompt too long ({prompt_len} chars), falling back to agentic mode", file=sys.stderr)
                 (success, error_msg, review_results), prompt_len = run_review(include_diff=False)
-                print(f"[Info] Review prompt length without diff: {prompt_len} characters", file=sys.stderr)
 
             if not success:
                 raise AuditError(f'Code review failed: {error_msg}')

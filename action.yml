@@ -68,6 +68,11 @@ inputs:
     required: false
     default: ''
 
+  max-diff-lines:
+    description: 'Maximum diff lines to embed in prompt. Larger diffs use agentic file reading instead. Set to 0 to always use agentic mode. Default: 5000'
+    required: false
+    default: '5000'
+
 outputs:
   findings-count:
     description: 'Number of code review findings'
@@ -227,6 +232,7 @@ runs:
         CUSTOM_SECURITY_SCAN_INSTRUCTIONS: ${{ inputs.custom-security-scan-instructions }}
         CLAUDE_MODEL: ${{ inputs.claude-model }}
         CLAUDECODE_TIMEOUT: ${{ inputs.claudecode-timeout }}
+        MAX_DIFF_LINES: ${{ inputs.max-diff-lines }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
         echo "Running ClaudeCode AI code review analysis..."
