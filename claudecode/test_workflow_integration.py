@@ -13,6 +13,15 @@ from pathlib import Path
 from claudecode.github_action_audit import main
 
 
+def claude_success_output(payload):
+    """Build a Claude CLI success wrapper with structured output."""
+    return json.dumps({
+        "type": "result",
+        "subtype": "success",
+        "structured_output": payload,
+    })
+
+
 class TestFullWorkflowIntegration:
     """Test complete workflow scenarios."""
     
@@ -254,11 +263,7 @@ index 8901234..5678901 100644
         
         audit_result = Mock()
         audit_result.returncode = 0
-        # Claude wraps the result in a specific format
-        claude_wrapped_response = {
-            'result': json.dumps(claude_response)
-        }
-        audit_result.stdout = json.dumps(claude_wrapped_response)
+        audit_result.stdout = claude_success_output(claude_response)
         audit_result.stderr = ''
         
         # Provide results for unified review (single pass)
@@ -345,8 +350,28 @@ index 8901234..5678901 100644
         
         mock_run.side_effect = [
             Mock(returncode=0, stdout='claude version 1.0.0', stderr=''),
-            Mock(returncode=0, stdout=json.dumps({"findings": claude_findings}), stderr=''),
-            Mock(returncode=0, stdout=json.dumps({"findings": []}), stderr='')
+            Mock(
+                returncode=0,
+                stdout=claude_success_output({
+                    "pr_summary": {
+                        "overview": "Dependency update review.",
+                        "file_changes": [],
+                    },
+                    "findings": claude_findings,
+                }),
+                stderr='',
+            ),
+            Mock(
+                returncode=0,
+                stdout=claude_success_output({
+                    "pr_summary": {
+                        "overview": "No additional filtering findings.",
+                        "file_changes": [],
+                    },
+                    "findings": [],
+                }),
+                stderr='',
+            )
         ]
         
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -423,8 +448,30 @@ index 8901234..5678901 100644
         # Claude finds no issues
         mock_run.side_effect = [
             Mock(returncode=0, stdout='claude version 1.0.0', stderr=''),
-            Mock(returncode=0, stdout='{"findings": [], "analysis_summary": {"review_completed": true}}', stderr=''),
-            Mock(returncode=0, stdout='{"findings": [], "analysis_summary": {"review_completed": true}}', stderr='')
+            Mock(
+                returncode=0,
+                stdout=claude_success_output({
+                    "pr_summary": {
+                        "overview": "README-only update.",
+                        "file_changes": [],
+                    },
+                    "findings": [],
+                    "analysis_summary": {"review_completed": True},
+                }),
+                stderr='',
+            ),
+            Mock(
+                returncode=0,
+                stdout=claude_success_output({
+                    "pr_summary": {
+                        "overview": "README-only update.",
+                        "file_changes": [],
+                    },
+                    "findings": [],
+                    "analysis_summary": {"review_completed": True},
+                }),
+                stderr='',
+            )
         ]
         
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -517,8 +564,28 @@ class TestWorkflowEdgeCases:
         # Claude handles it gracefully
         mock_run.side_effect = [
             Mock(returncode=0, stdout='claude version 1.0.0', stderr=''),
-            Mock(returncode=0, stdout='{"findings": []}', stderr=''),
-            Mock(returncode=0, stdout='{"findings": []}', stderr='')
+            Mock(
+                returncode=0,
+                stdout=claude_success_output({
+                    "pr_summary": {
+                        "overview": "Large refactor review.",
+                        "file_changes": [],
+                    },
+                    "findings": [],
+                }),
+                stderr='',
+            ),
+            Mock(
+                returncode=0,
+                stdout=claude_success_output({
+                    "pr_summary": {
+                        "overview": "Large refactor review.",
+                        "file_changes": [],
+                    },
+                    "findings": [],
+                }),
+                stderr='',
+            )
         ]
         
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -597,8 +664,28 @@ index 1234567..8901234 100644
         
         mock_run.side_effect = [
             Mock(returncode=0, stdout='claude version 1.0.0', stderr=''),
-            Mock(returncode=0, stdout='{"findings": []}', stderr=''),
-            Mock(returncode=0, stdout='{"findings": []}', stderr='')
+            Mock(
+                returncode=0,
+                stdout=claude_success_output({
+                    "pr_summary": {
+                        "overview": "Binary file review.",
+                        "file_changes": [],
+                    },
+                    "findings": [],
+                }),
+                stderr='',
+            ),
+            Mock(
+                returncode=0,
+                stdout=claude_success_output({
+                    "pr_summary": {
+                        "overview": "Binary file review.",
+                        "file_changes": [],
+                    },
+                    "findings": [],
+                }),
+                stderr='',
+            )
         ]
         
         with tempfile.TemporaryDirectory() as tmpdir:

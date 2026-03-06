@@ -3,6 +3,8 @@
 Pytest tests for GitHub Action audit script components.
 """
 
+import pytest
+
 
 class TestImports:
     """Test that all required modules can be imported."""
@@ -427,7 +429,7 @@ class TestExtractReviewFindings:
     """Test the _extract_review_findings method."""
 
     def test_extract_findings_with_pr_summary(self):
-        """Test that pr_summary is extracted from Claude output."""
+        """Test that missing structured_output is rejected."""
         import json
         from claudecode.github_action_audit import SimpleClaudeRunner
 
@@ -447,16 +449,36 @@ class TestExtractReviewFindings:
             })
         }
 
-        result = runner._extract_review_findings(claude_output)
+        with pytest.raises(ValueError, match="did not return structured_output"):
+            runner._extract_review_findings(claude_output)
 
-        assert 'pr_summary' in result
+    def test_extract_findings_from_structured_output(self):
+        """Test that structured_output is accepted when result is empty."""
+        from claudecode.github_action_audit import SimpleClaudeRunner
+
+        runner = SimpleClaudeRunner()
+
+        claude_output = {
+            'result': '',
+            'structured_output': {
+                'findings': [
+                    {'file': 'test.py', 'line': 1, 'severity': 'HIGH', 'description': 'Test finding'}
+                ],
+                'pr_summary': {
+                    'overview': 'This PR adds authentication middleware.',
+                    'file_changes': [
+                        {'label': 'src/auth.py', 'files': ['src/auth.py'], 'changes': 'Added JWT validation'}
+                    ]
+                }
+            }
+        }
+
+        result = runner._extract_review_findings(claude_output)
         assert result['pr_summary']['overview'] == 'This PR adds authentication middleware.'
-        assert len(result['pr_summary']['file_changes']) == 1
-        assert result['pr_summary']['file_changes'][0]['files'] == ['src/auth.py']
         assert len(result['findings']) == 1
 
-    def test_extract_findings_without_pr_summary(self):
-        """Test that missing pr_summary defaults to empty dict."""
+    def test_extract_findings_prefers_structured_output(self):
+        """Test that structured_output is used when both fields exist."""
         import json
         from claudecode.github_action_audit import SimpleClaudeRunner
 
@@ -464,14 +486,46 @@ class TestExtractReviewFindings:
 
         claude_output = {
             'result': json.dumps({
-                'findings': []
-            })
+                'findings': [],
+                'pr_summary': {
+                    'overview': 'Result text fallback.',
+                    'file_changes': []
+                }
+            }),
+            'structured_output': {
+                'findings': [
+                    {'file': 'test.py', 'line': 1, 'severity': 'HIGH', 'description': 'Structured output finding'}
+                ],
+                'pr_summary': {
+                    'overview': 'Structured output summary.',
+                    'file_changes': [
+                        {'label': 'src/auth.py', 'files': ['src/auth.py'], 'changes': 'Added JWT validation'}
+                    ]
+                }
+            }
         }
 
         result = runner._extract_review_findings(claude_output)
+        assert result['pr_summary']['overview'] == 'Structured output summary.'
+        assert len(result['findings']) == 1
 
-        assert 'pr_summary' in result
-        assert result['pr_summary'] == {}
+    def test_extract_findings_without_pr_summary(self):
+        """Test that invalid structured_output is rejected."""
+        from claudecode.github_action_audit import SimpleClaudeRunner
+
+        runner = SimpleClaudeRunner()
+
+        claude_output = {
+            'structured_output': {
+                'findings': []
+            }
+        }
+
+        with pytest.raises(
+            ValueError,
+            match="did not match the expected review schema",
+        ):
+            runner._extract_review_findings(claude_output)
 
     def test_extract_findings_empty_result(self):
         """Test extraction with invalid/empty Claude output."""
@@ -479,11 +533,8 @@ class TestExtractReviewFindings:
 
         runner = SimpleClaudeRunner()
 
-        result = runner._extract_review_findings({})
-
-        assert 'pr_summary' in result
-        assert result['pr_summary'] == {}
-        assert result['findings'] == []
+        with pytest.raises(ValueError, match="did not return structured_output"):
+            runner._extract_review_findings({})
 
     def test_extract_findings_with_grouped_files(self):
         """Test that grouped file_changes are handled correctly."""
@@ -493,7 +544,7 @@ class TestExtractReviewFindings:
         runner = SimpleClaudeRunner()
 
         claude_output = {
-            'result': json.dumps({
+            'structured_output': {
                 'findings': [],
                 'pr_summary': {
                     'overview': 'Test updates.',
@@ -505,7 +556,7 @@ class TestExtractReviewFindings:
                         }
                     ]
                 }
-            })
+            }
         }
 
         result = runner._extract_review_findings(claude_output)

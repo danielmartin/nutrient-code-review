@@ -9,6 +9,8 @@ import subprocess
 from unittest.mock import Mock, patch
 from pathlib import Path
 
+import pytest
+
 from claudecode.github_action_audit import SimpleClaudeRunner
 from claudecode.constants import DEFAULT_CLAUDE_MODEL
 
@@ -119,7 +121,6 @@ class TestSimpleClaudeRunner:
     @patch('subprocess.run')
     def test_run_code_review_success(self, mock_run):
         """Test successful code review."""
-        # Claude Code returns wrapped format with 'result' field
         findings_data = {
             "pr_summary": {
                 "overview": "Test PR summary",
@@ -138,7 +139,9 @@ class TestSimpleClaudeRunner:
         }
         
         audit_result = {
-            "result": json.dumps(findings_data)
+            "type": "result",
+            "subtype": "success",
+            "structured_output": findings_data
         }
         
         mock_run.return_value = Mock(
@@ -179,7 +182,14 @@ class TestSimpleClaudeRunner:
         """Test warning for large prompts."""
         mock_run.return_value = Mock(
             returncode=0,
-            stdout='{"findings": []}',
+            stdout=json.dumps({
+                "type": "result",
+                "subtype": "success",
+                "structured_output": {
+                    "pr_summary": {"overview": "Test", "file_changes": []},
+                    "findings": [],
+                },
+            }),
             stderr=''
         )
         
@@ -203,7 +213,18 @@ class TestSimpleClaudeRunner:
         # First call fails, second succeeds
         mock_run.side_effect = [
             Mock(returncode=1, stdout='', stderr='Temporary error'),
-            Mock(returncode=0, stdout='{"findings": []}', stderr='')
+            Mock(
+                returncode=0,
+                stdout=json.dumps({
+                    "type": "result",
+                    "subtype": "success",
+                    "structured_output": {
+                        "pr_summary": {"overview": "Test", "file_changes": []},
+                        "findings": [],
+                    },
+                }),
+                stderr='',
+            )
         ]
         
         runner = SimpleClaudeRunner()
@@ -227,13 +248,15 @@ class TestSimpleClaudeRunner:
         }
         
         success_result = {
-            "result": json.dumps({
+            "type": "result",
+            "subtype": "success",
+            "structured_output": {
                 "pr_summary": {
                     "overview": "Test",
                     "file_changes": [{"label": "test.py", "files": ["test.py"], "changes": "Test"}]
                 },
                 "findings": [{"file": "test.py", "line": 1, "severity": "LOW", "description": "Issue"}]
-            })
+            }
         }
         
         mock_run.side_effect = [
@@ -286,12 +309,41 @@ class TestSimpleClaudeRunner:
         assert success is False
         assert 'Failed to parse Claude output' in error
         assert mock_run.call_count == 2
+
+    @patch('subprocess.run')
+    def test_run_code_review_fails_without_structured_output(self, mock_run):
+        """Test that missing structured_output fails instead of approving silently."""
+        invalid_wrapper = json.dumps({
+            "type": "result",
+            "subtype": "success",
+            "result": json.dumps({
+                "pr_summary": {"overview": "Test", "file_changes": []},
+                "findings": [],
+            }),
+        })
+
+        mock_run.side_effect = [
+            Mock(returncode=0, stdout=invalid_wrapper, stderr=''),
+            Mock(returncode=0, stdout=invalid_wrapper, stderr=''),
+            Mock(returncode=0, stdout=invalid_wrapper, stderr=''),
+        ]
+
+        runner = SimpleClaudeRunner()
+        with patch('pathlib.Path.exists', return_value=True):
+            success, error, results = runner.run_code_review(
+                Path('/tmp/test'),
+                "test prompt"
+            )
+
+        assert success is False
+        assert "did not return structured_output" in error
+        assert results == {}
+        assert mock_run.call_count == 3
     
     def test_extract_review_findings_claude_wrapper(self):
-        """Test extraction from Claude Code wrapper format."""
+        """Test that missing structured_output is rejected."""
         runner = SimpleClaudeRunner()
         
-        # Test with result field containing JSON string
         claude_output = {
             "result": json.dumps({
                 "pr_summary": {"overview": "Test", "file_changes": []},
@@ -301,12 +353,29 @@ class TestSimpleClaudeRunner:
             })
         }
 
+        with pytest.raises(ValueError, match="did not return structured_output"):
+            runner._extract_review_findings(claude_output)
+
+    def test_extract_review_findings_structured_output_wrapper(self):
+        """Test extraction from Claude Code wrapper when result is empty."""
+        runner = SimpleClaudeRunner()
+
+        claude_output = {
+            "result": "",
+            "structured_output": {
+                "pr_summary": {"overview": "Test", "file_changes": []},
+                "findings": [
+                    {"file": "test.py", "line": 10, "severity": "HIGH"}
+                ]
+            }
+        }
+
         result = runner._extract_review_findings(claude_output)
         assert len(result['findings']) == 1
-        assert result['findings'][0]['file'] == 'test.py'
+        assert result['pr_summary']['overview'] == 'Test'
     
     def test_extract_review_findings_direct_format(self):
-        """Test that direct findings format was removed - only wrapped format is supported."""
+        """Test that direct findings format is rejected."""
         runner = SimpleClaudeRunner()
 
         # Direct format (without 'result' wrapper) should return empty
@@ -320,13 +389,11 @@ class TestSimpleClaudeRunner:
             }
         }
 
-        result = runner._extract_review_findings(claude_output)
-        # Should return empty structure since direct format is not supported
-        assert len(result['findings']) == 0
-        assert result['pr_summary'] == {}
+        with pytest.raises(ValueError, match="did not return structured_output"):
+            runner._extract_review_findings(claude_output)
     
     def test_extract_review_findings_text_fallback(self):
-        """Test that text fallback was removed - only JSON is supported."""
+        """Test that text-only result output is rejected."""
         runner = SimpleClaudeRunner()
 
         # Test with result containing text (not JSON)
@@ -334,20 +401,16 @@ class TestSimpleClaudeRunner:
             "result": "Found SQL injection vulnerability in database.py line 45"
         }
 
-        # Should return empty findings since we don't parse text anymore
-        result = runner._extract_review_findings(claude_output)
-        assert len(result['findings']) == 0
-        assert result['pr_summary'] == {}
+        with pytest.raises(ValueError, match="did not return structured_output"):
+            runner._extract_review_findings(claude_output)
     
     def test_extract_review_findings_empty(self):
-        """Test extraction with no findings."""
+        """Test extraction rejects empty or malformed outputs."""
         runner = SimpleClaudeRunner()
 
-        # Various empty formats
         for output in [None, {}, {"result": ""}, {"other": "data"}]:
-            result = runner._extract_review_findings(output)
-            assert result['findings'] == []
-            assert result['pr_summary'] == {}
+            with pytest.raises(ValueError):
+                runner._extract_review_findings(output)
     
     def test_create_findings_from_text(self):
         """Test that _create_findings_from_text was removed."""
@@ -375,12 +438,13 @@ class TestClaudeRunnerEdgeCases:
         # Test nested JSON in result - result field should be string
         nested_output = {
             "type": "result",
-            "result": json.dumps({
+            "subtype": "success",
+            "structured_output": {
                 "pr_summary": {"overview": "Test", "file_changes": []},
                 "findings": [
                     {"file": "test.py", "line": 1, "severity": "HIGH", "description": "Issue"}
                 ]
-            })
+            }
         }
         
         with patch('pathlib.Path.exists', return_value=True):
